@@ -1,0 +1,68 @@
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    stop_grace_period: "3s"
+    volumes:
+      - postgresql-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_POSTGRES}
+      POSTGRES_DB: openproject
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 20s
+      retries: 10
+
+  #cache:
+  #  image: memcached
+  #  restart: unless-stopped
+
+  pgadmin:
+    image: 'dpage/pgadmin4:latest'
+    environment:
+      - SERVICE_URL_PGADMIN
+      - 'PGADMIN_DEFAULT_EMAIL=${PGADMIN_DEFAULT_EMAIL:?}'
+      - 'PGADMIN_DEFAULT_PASSWORD=${PGADMIN_DEFAULT_PASSWORD:?}'
+    volumes:
+      - 'pgadmin-data:/var/lib/pgadmin'
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - '-qO-'
+        - 'http://localhost:80/login'
+      interval: 5s
+      timeout: 10s
+      retries: 5
+    depends_on:
+      - postgres
+      
+      
+  openproject:
+    image: openproject/openproject:16-slim
+    restart: unless-stopped
+    environment:
+      SERVICE_URL_OPENPROJECT_8080: ${SERVICE_URL_OPENPROJECT_8080}
+      OPENPROJECT_HOST__NAME: "${SERVICE_URL_OPENPROJECT}"
+      OPENPROJECT_HTTPS: "false"
+      OPENPROJECT_HSTS: "true"
+      #RAILS_CACHE_STORE: "memcache"
+      #OPENPROJECT_CACHE__MEMCACHE__SERVER: "cache:11211"
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_POSTGRES}
+      POSTGRES_DB: openproject
+      DATABASE_URL: postgres://postgres:${SERVICE_PASSWORD_POSTGRES}@postgres/openproject?pool=20&encoding=unicode&reconnect=true
+      RAILS_MIN_THREADS: ${RAILS_MIN_THREADS:-4}
+      RAILS_MAX_THREADS: ${RAILS_MAX_THREADS:-16}
+      # set to true to enable the email receiving feature. See ./docker/cron for more options
+      IMAP_ENABLED: "false"
+    volumes:
+      - opdata:/var/openproject/assets"
+    depends_on:
+      - postgres
+
+# Fixing migrations when container is restarting permanently
+# docker run --rm --network zk44scg840kc4s0gsooso0gs -e RAILS_ENV=production -e DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/openproject openproject/openproject:16-slim bin/rails db:migrate
